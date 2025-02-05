@@ -1,91 +1,79 @@
 import re
-from transformers import GPT2Tokenizer
+import time
 
-class BPE_Tokenizer:
-    def __init__(self, vocab):
-        self.vocab = {token: i for i, token in enumerate(list(vocab.keys())[:256])}  # Limit to first 256 tokens
-        self.tokens_freq = {}
-        self.max_id = max(self.vocab.values())  # Start from highest existing token ID
-        self.merged_tokens = {}
-
-    def init_Tokenizer(self, text):
-        """
-        Initialize tokenizer by splitting text into words and subwords, then computing initial token frequencies.
-        """
-        self.text = " ".join([word + "</w>" for word in text.split()])  # Preserve word boundaries
-        self.tokens_freq = {}
-
-        for token in self.text.split():
-            if token in self.tokens_freq:
-                self.tokens_freq[token] += 1
+#BPE_TOkenizer class
+class BPE_tokenize:
+    def __init__(self,vocab):
+        keys = list(vocab.keys())[:256]
+        self.vocab = {keys[i]:i for i in range(len(keys))} # getting first 256 Char
+        self.merged = {}
+        self.max_id = len(keys)
+        self.begining = 1
+   
+    def split_to_tokens(self,text):
+        Words = text.split()
+        tokens = []
+        for word in Words:
+            #check if word contain any of merged pair
+            for c in word:
+                tokens.append(c)
+        return tokens
+    def Train(self,text):
+        # starting with splitting the tokens to individual char
+        text = " ".join([word + "$" for word in text.split()])
+        tokens = []
+         # spliiting the text to individual bytes
+        tokens = self.split_to_tokens(text)
+        print(f"tokens----------------------------- {tokens}")
+         #getting  the pair and it number of occurence
+        for _ in range(10):
+            Pair, _ = self.get_Pairs(tokens,text)
+            if Pair ==None :
+                print("!!!!!!!!!!!!!!!! no Pairs Found STOPP")
+                print("------------------------------------------------------")
+                print("------------------------------------------------------")
+                print(f"current vocab f{self.vocab}")
+                print(f"merged words f{self.merged}")
+                return 1
+        #adding new pair two the merged list
+            self.merged[f"<{self.max_id}>"] = Pair
+            self.vocab[Pair[0]+Pair[1]] = self.max_id
+            tokens = self.merging_tokens(tokens,Pair)
+            #sub current teext with new Pair
+            text = re.sub(re.escape(Pair[0]+Pair[1]),f"<{self.max_id}>",text)
+            self.max_id+=1
+            print(f"new tokens--------------------------------- {tokens}")
+            print(f" new text {text}")
+            time.sleep(1)
+    def merging_tokens(self,tokens,Pair):
+        #merging tokens if there is pairs existing
+        merged_token = []
+        i =0 
+        while i < len(tokens)-1:
+            if tokens[i] == Pair[0] and tokens[i+1] == Pair[1]:
+                merged_token.append(f'<{self.max_id}>')
+                i+=2
             else:
-                self.tokens_freq[token] = 1  # Initialize frequency count
+                merged_token.append(tokens[i])
+                i+=1
 
-    def found_Pair(self):
-        """
-        Finds the most frequently occurring adjacent token pair in the text without using Counter.
-        """
-        token_list = self.text.split()
-        pair_freq = {}
-        most_frequent_pair = None
-        max_count = 0
+        return merged_token
 
-        # Iterate over all adjacent token pairs
-        for i in range(len(token_list) - 1):
-            pair = (token_list[i], token_list[i + 1])
-            pair_str = " ".join(pair)
 
-            # Count occurrences manually
-            if pair_str in pair_freq:
-                pair_freq[pair_str] += 1
-            else:
-                pair_freq[pair_str] = 1
-
-            # Keep track of the most frequent pair
-            if pair_freq[pair_str] > max_count:
-                most_frequent_pair = pair
-                max_count = pair_freq[pair_str]
-
-        if not most_frequent_pair:
-            return "", 0, []
-
-        return " ".join(most_frequent_pair), max_count, most_frequent_pair
-
-    def Train(self, num_merges=10):
-        """
-        Trains the tokenizer by merging the most frequent token pairs.
-        """
-        for iteration in range(num_merges):
-            new_token, nbre_occurence, old_tokens = self.found_Pair()
-            if not new_token:
-                break  # Stop if no more frequent pairs exist
-
-            print(f"Iteration {iteration + 1}: Merging {old_tokens} -> {new_token}")
-
-            # Update vocabulary
-            self.max_id += 1
-            self.vocab[new_token] = self.max_id
-            self.merged_tokens[new_token] = f"<{self.max_id}>"
-
-            # Replace occurrences in text
-            old_pair_str = " ".join(old_tokens)
-            self.text = self.text.replace(old_pair_str, f"<{self.max_id}>")
-
-            # Update token frequencies manually
-            self.tokens_freq[f"<{self.max_id}>"] = nbre_occurence
-            for token in old_tokens:
-                if token in self.tokens_freq:
-                    self.tokens_freq[token] -= nbre_occurence
-
-            print(f"Updated Text: {self.text}\n")
+    def get_Pairs(self,tokens,text):
+        #find most occurent pair in sequence of tokens
+        Count = {}
+        for i in range(len(tokens) -1):
+             Pair = (tokens[i],tokens[i+1])
+             occurence = max(0,len(re.findall(re.escape(Pair[0]+Pair[1]),text)))
+             if occurence < 1 :
+                 continue
+             Count[Pair] = occurence
+        print(Count)
+        if Count == {} :
+            return None,0
+        return sorted(Count.items(),key= lambda x: -x[1])[0]
         
-        print("Final Vocabulary:", self.vocab)
 
-# Example Usage
-GPT2_tokenizer = GPT2Tokenizer.from_pretrained("gpt2")
-vocab = GPT2_tokenizer.get_vocab()
-tokenizer = BPE_Tokenizer(vocab)
-
-text = "ana almoudamir ana almoudamir"
-tokenizer.init_Tokenizer(text)
-tokenizer.Train(num_merges=5)
+tokenizer = BPE_tokenize({})
+status =tokenizer.Train("the cat in the hat")
