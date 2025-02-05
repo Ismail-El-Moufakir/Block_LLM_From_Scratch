@@ -1,79 +1,91 @@
 import re
-import time
 
-#BPE_TOkenizer class
 class BPE_tokenize:
-    def __init__(self,vocab):
-        keys = list(vocab.keys())[:256]
-        self.vocab = {keys[i]:i for i in range(len(keys))} # getting first 256 Char
-        self.merged = {}
-        self.max_id = len(keys)
-        self.begining = 1
-   
-    def split_to_tokens(self,text):
-        Words = text.split()
-        tokens = []
-        for word in Words:
-            #check if word contain any of merged pair
-            for c in word:
-                tokens.append(c)
-        return tokens
-    def Train(self,text):
-        # starting with splitting the tokens to individual char
-        text = " ".join([word + "$" for word in text.split()])
-        tokens = []
-         # spliiting the text to individual bytes
-        tokens = self.split_to_tokens(text)
-        print(f"tokens----------------------------- {tokens}")
-         #getting  the pair and it number of occurence
-        for _ in range(10):
-            Pair, _ = self.get_Pairs(tokens,text)
-            if Pair ==None :
-                print("!!!!!!!!!!!!!!!! no Pairs Found STOPP")
-                print("------------------------------------------------------")
-                print("------------------------------------------------------")
-                print(f"current vocab f{self.vocab}")
-                print(f"merged words f{self.merged}")
-                return 1
-        #adding new pair two the merged list
-            self.merged[f"<{self.max_id}>"] = Pair
-            self.vocab[Pair[0]+Pair[1]] = self.max_id
-            tokens = self.merging_tokens(tokens,Pair)
-            #sub current teext with new Pair
-            text = re.sub(re.escape(Pair[0]+Pair[1]),f"<{self.max_id}>",text)
-            self.max_id+=1
-            print(f"new tokens--------------------------------- {tokens}")
-            print(f" new text {text}")
-            time.sleep(1)
-    def merging_tokens(self,tokens,Pair):
-        #merging tokens if there is pairs existing
-        merged_token = []
-        i =0 
-        while i < len(tokens)-1:
-            if tokens[i] == Pair[0] and tokens[i+1] == Pair[1]:
-                merged_token.append(f'<{self.max_id}>')
-                i+=2
-            else:
-                merged_token.append(tokens[i])
-                i+=1
+    def __init__(self):
+        # Initialisation du vocabulaire avec les 256 premiers caractères ASCII
+        self.vocab = {chr(i): i for i in range(256)}
+        self.id_to_token = {i: chr(i) for i in range(256)}
+        self.merged = {}  # Stocke les paires fusionnées
+        self.max_id = len(self.vocab)  # ID maximal actuel
 
-        return merged_token
+    def split_to_tokens(self, text):
+        """Découpe le texte en caractères individuels avec marqueur de fin `$`."""
+        return list(text)
 
-
-    def get_Pairs(self,tokens,text):
-        #find most occurent pair in sequence of tokens
+    def get_Pairs(self, tokens):
+        """Trouve la paire la plus fréquente dans la liste des tokens."""
         Count = {}
-        for i in range(len(tokens) -1):
-             Pair = (tokens[i],tokens[i+1])
-             occurence = max(0,len(re.findall(re.escape(Pair[0]+Pair[1]),text)))
-             if occurence < 1 :
-                 continue
-             Count[Pair] = occurence
-        print(Count)
-        if Count == {} :
-            return None,0
-        return sorted(Count.items(),key= lambda x: -x[1])[0]
+        for i in range(len(tokens) - 1):
+            pair = (tokens[i], tokens[i + 1])
+            Count[pair] = Count.get(pair, 0) + 1
         
+        if not Count:
+            return None, 0
+        return max(Count.items(), key=lambda x: x[1])  # Retourne la paire la plus fréquente
 
-tokenizer = BPE_tokenize({})
-status =tokenizer.Train("the cat in the hat")
+    def merging_tokens(self, tokens, pair):
+        """Fusionne toutes les occurrences de `pair` en un seul token."""
+        merged_tokens = []
+        i = 0
+        while i < len(tokens):
+            if i < len(tokens) - 1 and (tokens[i], tokens[i + 1]) == pair:
+                merged_tokens.append(pair[0] + pair[1])  # Fusion des deux caractères
+                i += 2
+            else:
+                merged_tokens.append(tokens[i])
+                i += 1
+        return merged_tokens
+
+    def Train(self, text, num_merges=10):
+        """Entraîne le tokeniseur BPE sur un texte donné."""
+        text = " ".join([word + "$" for word in text.split()])  # Ajoute des marqueurs de fin de mot
+        tokens = self.split_to_tokens(text)
+
+        for _ in range(num_merges):
+            pair, occurrence = self.get_Pairs(tokens)
+            if pair is None:
+                break  # Arrête si plus aucune paire ne peut être fusionnée
+
+            # Ajout de la nouvelle paire au vocabulaire et fusion des tokens
+            new_token = pair[0] + pair[1]
+            self.merged[pair] = occurrence
+            self.vocab[new_token] = self.max_id
+            self.id_to_token[self.max_id] = new_token
+            self.max_id += 1
+            tokens = self.merging_tokens(tokens, pair)
+
+        print(f"Vocab final : {self.vocab}")
+        print(f"Paires fusionnées : {self.merged}")
+
+    def encode(self, text):
+        """Encode un texte en une séquence d'IDs."""
+        text = " ".join([word + "$" for word in text.split()])
+        tokens = self.split_to_tokens(text)
+
+        for pair in sorted(self.merged.keys(), key=lambda p: self.vocab.get(p[0] + p[1], float('inf'))):
+            tokens = self.merging_tokens(tokens, pair)
+
+        token_ids = [self.vocab[token] for token in tokens]  # Convertit les tokens en IDs
+        return token_ids
+
+    def decode(self, token_ids):
+        """Reconstitue le texte original à partir des IDs."""
+        tokens = [self.id_to_token[id] for id in token_ids]
+        text = "".join(tokens).replace("$", " ").strip()
+        return text
+
+
+# Test du tokeniseur BPE
+tokenizer = BPE_tokenize()
+text = "Neural networks are a subset of machine learning, inspired by the structure of the human brain."
+
+# Entraînement du tokeniseur
+tokenizer.Train(text, num_merges=10)
+
+# Encodage d'une nouvelle phrase en IDs
+tokens_ids = tokenizer.encode("ana almoudamir ana almoudamir")
+print("\nTokens (IDs):", tokens_ids)
+
+# Décodage depuis les IDs
+decoded_text = tokenizer.decode(tokens_ids)
+print("\nTexte décodé:", decoded_text)
